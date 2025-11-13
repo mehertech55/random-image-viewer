@@ -1,98 +1,253 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from "react-native";
+import { Image } from "expo-image";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+const API_URL = "https://november7-730026606190.europe-west1.run.app/image";
 
-export default function HomeScreen() {
+function colorFromUrl(url: string, isDark: boolean): string {
+  // Simple hash of URL -> hue
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    hash = url.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  const lightness = isDark ? 18 : 82;
+  // pastel-ish but distinct per image
+  return `hsl(${hue}, 60%, ${lightness}%)`;
+}
+
+export default function IndexScreen() {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
+
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [bgColor, setBgColor] = useState<string>(
+    isDark ? "#000000" : "#f2f2f7"
+  );
+
+  const anim = useRef(new Animated.Value(0)).current;
+  const prevBgColor = useRef<string>(bgColor);
+
+  const animateBgTo = (nextColor: string) => {
+    prevBgColor.current = bgColor;
+    anim.setValue(0);
+    setBgColor(nextColor);
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 500,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: false, // color interpolation needs false
+    }).start();
+  };
+
+  const interpolatedBg = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [prevBgColor.current, bgColor],
+  });
+
+  const fetchRandomImage = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const res = await fetch(API_URL);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data: { url?: string } = await res.json();
+      if (!data.url) {
+        throw new Error("Invalid response from /image");
+      }
+
+      setImageUrl(data.url);
+    } catch (e) {
+      console.error(e);
+      setError("Unable to load image. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRandomImage();
+  }, []);
+
+  const onImageLoaded = () => {
+    if (!imageUrl) return;
+    const dominant = colorFromUrl(imageUrl, isDark);
+    animateBgTo(dominant);
+  };
+
+  const disabled = isLoading;
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
+    <Animated.View
+      style={[styles.root, { backgroundColor: interpolatedBg as any }]}
+    >
+      <StatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle={isDark ? "light-content" : "dark-content"}
+      />
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          {/* Square image */}
+          <View
+            accessible
+            accessibilityRole="image"
+            style={styles.imageWrapper}
+          >
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.image}
+                contentFit="cover"
+                transition={500}
+                onLoadEnd={onImageLoaded}
+                accessibilityLabel="Random image from Unsplash"
               />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+            ) : (
+              <View style={styles.placeholder}>
+                <Text
+                  style={[
+                    styles.placeholderText,
+                    { color: isDark ? "#e5e7eb" : "#4b5563" },
+                  ]}
+                >
+                  Loading image…
+                </Text>
+              </View>
+            )}
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+            {isLoading && (
+              <View
+                style={styles.loadingOverlay}
+                accessible
+                accessibilityLabel="Loading new image"
+              >
+                <ActivityIndicator size="large" />
+              </View>
+            )}
+          </View>
+
+          {error && (
+            <Text
+              style={[
+                styles.errorText,
+                { color: isDark ? "#fecaca" : "#b91c1c" },
+              ]}
+              accessibilityRole="alert"
+            >
+              {error}
+            </Text>
+          )}
+
+          <TouchableOpacity
+            onPress={fetchRandomImage}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel="Load another random image"
+            accessibilityHint="Fetches a new random image and updates the background"
+            style={[
+              styles.button,
+              isDark ? styles.buttonDark : styles.buttonLight,
+              disabled && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.buttonText}>
+              {isLoading ? "Loading…" : "Another"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  root: {
+    flex: 1,
   },
-  stepContainer: {
-    gap: 8,
+  safeArea: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 16,
+  },
+  imageWrapper: {
+    width: "80%",
+    aspectRatio: 1,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.08)",
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  placeholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  placeholderText: {
+    fontSize: 14,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.15)",
+  },
+  errorText: {
     marginBottom: 8,
+    textAlign: "center",
+    fontSize: 14,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  button: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 999,
+  },
+  buttonLight: {
+    backgroundColor: "#111827",
+  },
+  buttonDark: {
+    backgroundColor: "rgba(15,23,42,0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(249,250,251,0.18)",
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
+    color: "#f9fafb",
   },
 });
